@@ -1,0 +1,106 @@
+#include "./charset.h"
+#include <SPI.h>
+//#define DIN 11
+//#define CLK 13
+//#define CS 10
+//钟面示例
+byte screenBuffer[40]={
+      0xF7,0x94,0x94,0x97,0x94,0x94,0x94,0xF7,
+      0x8F,0x81,0xA1,0x8F,0x81,0xA1,0x81,0x8F,
+      0x12,0x12,0x13,0x10,0x10,0x10,0x10,0x10,
+      0xB8,0xA0,0xB8,0xA8,0xB8,0x00,0x00,0x00
+};
+/*//载入中
+byte screenBuffer[40]={
+      0x40,0x40,0x40,0x56,0x59,0x51,0x51,0x51,
+      0x00,0x48,0x08,0x5E,0x48,0x48,0x48,0x46,
+      0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xA8,
+      0x3C,0x42,0x91,0x91,0x9D,0x81,0x42,0x3C
+};*/
+/*//功能选择
+byte screenBuffer[40]={
+      0x3C,0x42,0x91,0x91,0x9D,0x81,0x42,0x3C,
+      0x7E,0x42,0x3C,0x18,0x18,0x24,0x7E,0x7E,
+      0x38,0x00,0x3A,0x54,0x92,0x82,0x44,0x38,
+      0x44,0x82,0x38,0x54,0x92,0x82,0x44,0x38
+};*/
+/*//Hello World
+byte screenBuffer[40]={
+      0xA0,0xA0,0xA0,0xE4,0xAA,0xAE,0xA8,0xA6,
+      0xA0,0xA0,0xA0,0xA4,0xAA,0xAA,0xAA,0xA4,
+      0xA0,0xA0,0xA0,0xA4,0xEA,0xEA,0xEA,0xA4,
+      0x11,0x11,0x11,0xD3,0x95,0x95,0x95,0x93
+};*/
+
+#define DECODEMODE 0x09
+#define INTENSITY 0x0a
+#define SCANLIMIT 0x0b
+#define SHUTDOWN 0x0c
+#define DISPLAYTEST 0x0f
+
+void matrixInit() {
+  const byte operatingCode[5][2]={
+    {DECODEMODE, 0x00},
+    {INTENSITY,  0x00},
+    {SCANLIMIT,  0x07},
+    {SHUTDOWN,   0x01},
+    {DISPLAYTEST,0x00}
+  };
+  for(char j=0;j<5;j++){
+    digitalWrite(SS, LOW);
+    for(char i=0;i<4;i++){
+      SPI.transfer(operatingCode[j][0]);
+      SPI.transfer(operatingCode[j][1]);
+    }
+    digitalWrite(SS, HIGH);
+  }
+}
+
+void refresh() {
+  for(char i=0;i<8;i++){
+    digitalWrite(SS, LOW);              //片选
+    for(char j=0;j<4;j++){
+      SPI.transfer(i+1);                //写入数码管编号
+      SPI.transfer(screenBuffer[j*8+i]);//写入数据
+    }
+    digitalWrite(SS, HIGH);
+  }
+}
+
+void moveLeft(unsigned char distance){
+  for(char i=0;i<32;i++){
+    screenBuffer[i] = (screenBuffer[i] << distance) | (screenBuffer[i+8] >> (8-distance));  //前4块左移
+  }
+  for(char i=0;i<8;i++){
+    screenBuffer[i+32] = screenBuffer[i+32] << distance;  //缓冲区左移
+  }
+}
+
+void scrollText(byte text[], int Delay,char charWidth){
+  for(long i=0;i<strlen(text);i++){                   //逐字滚出
+    for(char j=0;j<8;j++){
+      screenBuffer[32+j]=pgm_read_byte(charset+8*text[i]-0x0100+j); //将字符读入缓冲区
+    }
+    for(char j=0;j<charWidth;j++){                    //左移
+      moveLeft(1);
+      refresh();
+      delay(Delay);
+    }
+  }
+}
+
+void putChar(byte character, unsigned char pos){
+  char posBlock = pos >> 3;  //获取块位置
+  char posDetail = pos % 8;  //获取偏移
+  for(char j=0;j<8;j++){
+    byte picData = pgm_read_byte(charset+8*character-0x0100+j);
+    screenBuffer[8*posBlock+j] |= picData >> posDetail;
+    screenBuffer[8*posBlock+j+8] |= picData << (8-posDetail);
+  }
+}
+
+void clear(){
+  for(char i=0;i<40;i++){
+    screenBuffer[i]=0;
+  }
+}
